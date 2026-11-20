@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculator</title>
+<style>
+  /* ============ BASE / RESET ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+    background: #d9d9d9;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    min-height: 100dvh;
+  }
+  button { font-family: inherit; cursor: pointer; border: none; outline: none; }
+  button:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+
+  /* ============ CALCULATOR SHELL ============ */
+  .calculator {
+    background: #f2f2f2;
+    width: 100%;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ============ TOP ICON BAR (History / Currency / Length) ============ */
+  .topbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 30px;
+    padding: 26px 30px 0 30px;
+  }
+  .icon-btn {
+    background: none;
+    width: 30px;
+    height: 30px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color 0.15s, background 0.15s;
+  }
+  .icon-btn svg { width: 28px; height: 28px; }
+  .icon-btn.active { color: #1a73e8; }
+  .icon-btn:active { background: rgba(0,0,0,0.06); }
+
+  /* ============ DISPLAY ============
+     Same as the reference app: BIG line = full expression as typed
+     (with blinking cursor), SMALL grey line below = live result. */
+  .display {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-end;
+    padding: 10px 30px 18px 30px;
+    min-height: 120px;
+    overflow: hidden;
+    position: relative;
+  }
+  .main-line {
+    font-size: clamp(46px, 13vw, 64px);
+    font-weight: 400;
+    color: #111;
+    max-width: 100%;
+    line-height: 1.15;
+    word-break: break-all;
+    text-align: right;
+  }
+  .cursor {
+    display: inline-block;
+    width: 3px;
+    height: 1em;
+    background: #1a73e8;
+    margin-left: 4px;
+    vertical-align: -0.1em;
+    animation: blink 1s step-end infinite;
+  }
+  .cursor.hidden { display: none; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .sub-line {
+    font-size: 30px;
+    color: #888;
+    min-height: 38px;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ============ HISTORY PANEL ============ */
+  .history-panel {
+    display: none;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #f2f2f2;
+    z-index: 5;
+    flex-direction: column;
+    padding: 16px 24px;
+  }
+  .history-panel.open { display: flex; }
+  .history-panel h3 { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 12px; }
+  .history-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .history-item {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 18px;
+    text-align: right;
+    color: #111;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .history-empty { color: #888; font-size: 16px; text-align: center; margin-top: 30px; }
+  .history-clear {
+    margin-top: 12px;
+    background: #1a73e8;
+    color: #fff;
+    border-radius: 24px;
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  /* ============ SCIENTIFIC ROW (toggle via expand button) ============ */
+  .sci-row {
+    display: none;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 0 16px 12px 16px;
+  }
+  .sci-row.open { display: grid; }
+
+  /* ============ MAIN BUTTON GRID ============ */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 0 16px 22px 16px;
+  }
+  .key {
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #111;
+    font-size: 30px;
+    font-weight: 400;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.08s, box-shadow 0.08s, background 0.15s;
+    user-select: none;
+  }
+  .key:active { transform: scale(0.94); box-shadow: 0 1px 2px rgba(0,0,0,0.08); background: #f7f7f7; }
+  .key.op { color: #1a73e8; font-size: 32px; }
+  .key.fn { color: #1a73e8; }
+  .key.clear { color: #f4511e; }
+  .key.equals { background: #1a73e8; color: #ffffff; font-size: 34px; }
+  .key.equals:active { background: #1557b0; }
+  .key svg { width: 30px; height: 30px; }
+
+  /* ============ CONVERTER VIEWS ============ */
+  .converter {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    padding: 10px 28px 28px 28px;
+    gap: 16px;
+  }
+  .converter.open { display: flex; }
+  .converter h2 { font-size: 22px; font-weight: 600; color: #111; }
+  .converter label { font-size: 14px; color: #666; margin-bottom: -8px; }
+  .converter input, .converter select {
+    width: 100%;
+    font-size: 20px;
+    padding: 14px 16px;
+    border: 1px solid #ddd;
+    border-radius: 14px;
+    background: #fff;
+    color: #111;
+    outline: none;
+  }
+  .converter input:focus, .converter select:focus { border-color: #1a73e8; }
+  .conv-result {
+    background: #fff;
+    border-radius: 14px;
+    padding: 18px 16px;
+    font-size: 24px;
+    text-align: right;
+    color: #111;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    min-height: 62px;
+    word-break: break-all;
+  }
+  .conv-swap {
+    align-self: center;
+    background: #1a73e8;
+    color: #fff;
+    border-radius: 50%;
+    width: 46px;
+    height: 46px;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .conv-note { font-size: 13px; color: #888; text-align: center; }
+
+  /* ================================================================
+     MEDIA QUERIES — responsive behaviour (A to Z proper)
+     ================================================================ */
+
+  /* Small phones: tighter spacing, slightly smaller keys */
+  @media (max-width: 360px) {
+    .topbar { gap: 22px; padding: 20px 22px 0 22px; }
+    .display { padding: 8px 22px 14px 22px; }
+    .grid, .sci-row { gap: 9px; padding-left: 12px; padding-right: 12px; }
+    .key { font-size: 26px; }
+    .key.op { font-size: 28px; }
+    .main-line { font-size: 42px; }
+    .sub-line { font-size: 24px; min-height: 30px; }
+  }
+
+  /* Tablet / desktop: centred phone-size card instead of full width */
+  @media (min-width: 481px) {
+    body { align-items: center; padding: 20px 0; }
+    .calculator {
+      width: 420px;
+      height: min(880px, calc(100dvh - 40px));
+      border-radius: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+  }
+
+  /* Large desktop: same phone-size card, roomier page background */
+  @media (min-width: 900px) {
+    body { background: #cfcfcf; }
+  }
+
+  /* Short / landscape screens: shrink the display so keys always fit */
+  @media (max-height: 620px) {
+    .display { min-height: 70px; padding-bottom: 8px; }
+    .main-line { font-size: 38px; }
+    .sub-line { font-size: 22px; min-height: 28px; }
+    .grid { padding-bottom: 14px; gap: 9px; }
+    .topbar { padding-top: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="calculator" id="calculator">
+
+  <!-- Top icons: History | Currency converter | Length converter -->
+  <div class="topbar">
+    <button class="icon-btn" id="btnHistory" title="History" aria-label="History">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+      </svg>
+    </button>
+    <button class="icon-btn" id="btnCurrency" title="Currency converter" aria-label="Currency converter">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/>
+        <text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor" stroke="none">$</text>
+      </svg>
+    </button>
+    <button class="icon-btn" id="btnLength" title="Length converter" aria-label="Length converter">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="8" width="19" height="8" rx="1.5" transform="rotate(-24 12 12)"/>
+        <path d="M7.5 9.5l1.2 2.4M11 8.2l1.2 2.4M14.5 9.5l1.2 2.4" transform="rotate(-24 12 12)"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ===== CALCULATOR VIEW ===== -->
+  <div class="display" id="display">
+    <!-- BIG line: full expression as typed (like the reference app) -->
+    <div class="main-line"><span id="mainText">0</span><span class="cursor" id="cursor"></span></div>
+    <!-- SMALL grey line below: live result while typing -->
+    <div class="sub-line" id="subText"></div>
+
+    <!-- History panel overlays the display area -->
+    <div class="history-panel" id="historyPanel">
+      <h3>History</h3>
+      <div class="history-list" id="historyList"></div>
+      <button class="history-clear" id="btnClearHistory">Clear history</button>
+    </div>
+  </div>
+
+  <!-- Scientific row (expand button toggles this) -->
+  <div class="sci-row" id="sciRow">
+    <button class="key fn" data-fn="sqrt" title="Square root">&#8730;</button>
+    <button class="key fn" data-fn="square" title="Square">x&#178;</button>
+    <button class="key fn" data-fn="negate" title="Plus / minus">&plusmn;</button>
+    <button class="key fn" data-fn="reciprocal" title="Reciprocal">1/x</button>
+  </div>
+
+  <!-- Main keypad: same layout as the reference screenshot -->
+  <div class="grid" id="mainGrid">
+    <button class="key fn clear" data-fn="clear">C</button>
+    <button class="key fn" data-fn="percent">%</button>
+    <button class="key fn" data-fn="backspace" aria-label="Backspace">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6l5-3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8l-5-3z" transform="translate(0,-1)"/>
+        <path d="M11 9l5 6M16 9l-5 6" transform="translate(0,-1)"/>
+      </svg>
+    </button>
+    <button class="key op" data-op="&divide;">&divide;</button>
+
+    <button class="key" data-digit="7">7</button>
+    <button class="key" data-digit="8">8</button>
+    <button class="key" data-digit="9">9</button>
+    <button class="key op" data-op="&times;">&times;</button>
+
+    <button class="key" data-digit="4">4</button>
+    <button class="key" data-digit="5">5</button>
+    <button class="key" data-digit="6">6</button>
+    <button class="key op" data-op="&minus;">&minus;</button>
+
+    <button class="key" data-digit="1">1</button>
+    <button class="key" data-digit="2">2</button>
+    <button class="key" data-digit="3">3</button>
+    <button class="key op" data-op="+">+</button>
+
+    <button class="key fn" id="btnExpand" title="Scientific functions" aria-label="More functions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>
+      </svg>
+    </button>
+    <button class="key" data-digit="0">0</button>
+    <button class="key" data-fn="dot">.</button>
+    <button class="key equals" data-fn="equals">=</button>
+  </div>
+
+  <!-- ===== CURRENCY CONVERTER VIEW ===== -->
+  <div class="converter" id="currencyView">
+    <h2>Currency Converter</h2>
+    <label>Amount</label>
+    <input type="number" id="curAmount" value="1" min="0" step="any">
+    <label>From</label>
+    <select id="curFrom">
+      <option value="USD">USD — US Dollar</option>
+      <option value="PKR" selected>PKR — Pakistani Rupee</option>
+      <option value="EUR">EUR — Euro</option>
+      <option value="GBP">GBP — British Pound</option>
+      <option value="AED">AED — UAE Dirham</option>
+      <option value="SAR">SAR — Saudi Riyal</option>
+      <option value="INR">INR — Indian Rupee</option>
+      <option value="CAD">CAD — Canadian Dollar</option>
+    </select>
+    <button class="conv-swap" id="curSwap" title="Swap">&#8646;</button>
+    <label>To</label>
+    <select id="curTo">
+      <option value="USD" selected>USD — US Dollar</option>
+      <option value="PKR">PKR — Pakistani Rupee</option>
+      <option value="EUR">EUR — Euro</option>
+      <option value="GBP">GBP — British Pound</option>
+      <option value="AED">AED — UAE Dirham</option>
+      <option value="SAR">SAR — Saudi Riyal</option>
+      <option value="INR">INR — Indian Rupee</option>
+      <option value="CAD">CAD — Canadian Dollar</option>
+    </select>
+    <div class="conv-result" id="curResult"></div>
+    <p class="conv-note">Rates takhmini (approximate) hain — live market rates nahi.</p>
+  </div>
+
+  <!-- ===== LENGTH CONVERTER VIEW ===== -->
+  <div class="converter" id="lengthView">
+    <h2>Length Converter</h2>
+    <label>Value</label>
+    <input type="number" id="lenValue" value="1" min="0" step="any">
+    <label>From</label>
+    <select id="lenFrom">
+      <option value="mm">Millimeter (mm)</option>
+      <option value="cm">Centimeter (cm)</option>
+      <option value="m" selected>Meter (m)</option>
+      <option value="km">Kilometer (km)</option>
+      <option value="in">Inch (in)</option>
+      <option value="ft">Foot (ft)</option>
+      <option value="yd">Yard (yd)</option>
+      <option value="mi">Mile (mi)</option>
+    </select>
+    <button class="conv-swap" id="lenSwap" title="Swap">&#8646;</button>
+    <label>To</label>
+    <select id="lenTo">
+      <option value="mm">Millimeter (mm)</option>
+      <option value="cm" selected>Centimeter (cm)</option>
+      <option value="m">Meter (m)</option>
+      <option value="km">Kilometer (km)</option>
+      <option value="in">Inch (in)</option>
+      <option value="ft">Foot (ft)</option>
+      <option value="yd">Yard (yd)</option>
+      <option value="mi">Mile (mi)</option>
+    </select>
+    <div class="conv-result" id="lenResult"></div>
+  </div>
+
+</div>
+
+<script>
+  /* ================= CALCULATOR STATE =================
+     The display works exactly like the reference app:
+     - while typing, the BIG line shows the full expression (8+8)
+       and the SMALL grey line below shows the live result (16)
+     - after =, the BIG line shows the result and the SMALL line
+       shows the expression with = (8+8=) */
+  let expr = "";             // full expression as typed, e.g. "8+8"
+  let showingResult = false; // true right after =
+  let lastResult = null;     // result shown after =
+  let lastOp = null, lastOperand = null; // for repeated =
+  let errorState = false;
+  let history = [];
+
+  const mainEl = document.getElementById("mainText");
+  const subEl = document.getElementById("subText");
+  const cursorEl = document.getElementById("cursor");
+
+  const OPS = ["+", "−", "×", "÷"];
+  const isOp = (c) => OPS.includes(c);
+  const toNum = (s) => parseFloat(String(s).replace("−", "-"));
+  // format a computed number for display inside the expression (uses −)
+  const ins = (n) => formatNum(n).replace(/-/g, "−");
+
+  /* Format a number: kill float dust, switch to exponential when huge/tiny */
+  function formatNum(n) {
+    if (typeof n !== "number" || isNaN(n) || !isFinite(n)) return null;
+    if (Math.abs(n) >= 1e12 || (Math.abs(n) < 1e-9 && n !== 0)) return n.toExponential(6);
+    return parseFloat(n.toFixed(10)).toString();
+  }
+
+  /* ---- Expression evaluation with correct precedence (× ÷ before + −) ---- */
+  function evaluate(e) {
+    if (!e) return null;
+    // strip a trailing operator for live preview, e.g. "8+" -> "8"
+    while (e.length > 0 && isOp(e[e.length - 1]) && !(e.length === 1 && e === "−")) e = e.slice(0, -1);
+    if (!e || e === "−") return null;
+    // tokenize: numbers (with unary −) and operators; % means /100
+    const values = [];
+    const ops = [];
+    let i = 0;
+    const isDigitOrDot = (c) => (c >= "0" && c <= "9") || c === ".";
+    while (i < e.length) {
+      const c = e[i];
+      if (isDigitOrDot(c) || (c === "−" && (i === 0 || isOp(e[i - 1])))) {
+        let num = "";
+        if (c === "−") { num = "−"; i++; }
+        while (i < e.length && isDigitOrDot(e[i])) { num += e[i]; i++; }
+        let v = toNum(num);
+        if (isNaN(v)) return null;
+        if (e[i] === "%") { v = v / 100; i++; }
+        values.push(v);
+      } else if (isOp(c)) {
+        ops.push(c);
+        i++;
+      } else {
+        return null;
+      }
+    }
+    if (values.length === 0) return null;
+    if (ops.length === 0) return values[0];
+    // first pass: × ÷
+    const v2 = [values[0]];
+    const o2 = [];
+    for (let k = 0; k < ops.length; k++) {
+      const op = ops[k], val = values[k + 1];
+      if (op === "×") v2[v2.length - 1] = v2[v2.length - 1] * val;
+      else if (op === "÷") {
+        if (val === 0) return NaN;
+        v2[v2.length - 1] = v2[v2.length - 1] / val;
+      } else { o2.push(op); v2.push(val); }
+    }
+    // second pass: + −
+    let res = v2[0];
+    for (let k = 0; k < o2.length; k++) {
+      res = o2[k] === "+" ? res + v2[k + 1] : res - v2[k + 1];
+    }
+    return res;
+  }
+
+  /* Live result shown under the expression while typing.
+     Only when the expression actually contains an operation. */
+  function liveResult() {
+    if (!OPS.some((op) => expr.includes(op))) return "";
+    const r = evaluate(expr);
+    if (r === null || isNaN(r)) return "";
+    return formatNum(r);
+  }
+
+  function updateDisplay() {
+    if (errorState) {
+      mainEl.textContent = "Error";
+      subEl.textContent = "";
+      cursorEl.classList.add("hidden");
+    } else if (showingResult) {
+      mainEl.textContent = lastResult;
+      subEl.textContent = expr + "=";
+      cursorEl.classList.add("hidden");
+    } else {
+      mainEl.textContent = expr === "" ? "0" : expr;
+      subEl.textContent = liveResult();
+      cursorEl.classList.remove("hidden");
+    }
+  }
+
+  function showError() {
+    errorState = true;
+    updateDisplay();
+  }
+
+  function clearAll() {
+    expr = ""; showingResult = false; lastResult = null;
+    lastOp = null; lastOperand = null; errorState = false;
+    updateDisplay();
+  }
+
+  function pressDigit(d) {
+    if (errorState) clearAll();
+    if (showingResult) { expr = d; showingResult = false; lastOp = null; lastOperand = null; }
+    else if (expr.length < 16) { expr += d; }
+    updateDisplay();
+  }
+
+  function pressDot() {
+    if (errorState) clearAll();
+    if (showingResult) { expr = "0."; showingResult = false; }
+    else {
+      // current number token = trailing digits/dots (after last operator)
+      let idx = -1;
+      for (let k = expr.length - 1; k >= 0; k--) {
+        if (isOp(expr[k]) && !(k === 0 && expr[k] === "−") && !(isOp(expr[k - 1]))) { idx = k; break; }
+      }
+      const token = expr.slice(idx + 1);
+      if (token === "" || token === "−") expr += "0.";
+      else if (!token.includes(".")) expr += ".";
+    }
+    updateDisplay();
+  }
+
+  function pressOperator(op) {
+    if (errorState) { clearAll(); return; }
+    if (showingResult) { expr = lastResult + op; showingResult = false; }
+    else if (expr === "") {
+      if (op === "−") expr = "−"; // allow starting with a negative number
+      else return;
+    } else if (isOp(expr[expr.length - 1])) {
+      // replace the trailing operator (e.g. 8+ then × -> 8×)
+      if (!(expr.length === 1 && expr === "−")) expr = expr.slice(0, -1) + op;
+    } else {
+      expr += op;
+    }
+    updateDisplay();
+  }
+
+  function addHistory(line) {
+    history.unshift(line);
+    if (history.length > 50) history.pop();
+    renderHistory();
+  }
+
+  /* Split an expression into its last binary operator + last operand */
+  function lastOpAndOperand(e) {
+    for (let k = e.length - 1; k > 0; k--) {
+      if (isOp(e[k]) && !isOp(e[k - 1])) {
+        return { op: e[k], operand: e.slice(k + 1) };
+      }
+    }
+    return null;
+  }
+
+  function pressEquals() {
+    if (errorState) { clearAll(); return; }
+    if (showingResult && lastOp !== null) {
+      // repeated = : re-apply the last operation to the result
+      const newExpr = lastResult + lastOp + lastOperand;
+      const r = evaluate(newExpr);
+      if (r === null || isNaN(r)) { showError(); return; }
+      expr = newExpr;
+      lastResult = formatNum(r);
+      addHistory(newExpr + "=" + lastResult);
+    } else {
+      const r = evaluate(expr);
+      if (r === null || isNaN(r)) { showError(); return; }
+      const parts = lastOpAndOperand(expr);
+      if (parts) { lastOp = parts.op; lastOperand = parts.operand; }
+      else { lastOp = null; lastOperand = null; }
+      lastResult = formatNum(r);
+      addHistory(expr + "=" + lastResult);
+      showingResult = true;
+    }
+    updateDisplay();
+  }
+
+  function pressPercent() {
+    if (errorState) return;
+    if (showingResult) {
+      expr = ins(toNum(lastResult) / 100);
+      showingResult = false;
+      updateDisplay();
+      return;
+    }
+    // trailing number token in the expression
+    let idx = -1;
+    for (let k = expr.length - 1; k > 0; k--) {
+      if (isOp(expr[k]) && !isOp(expr[k - 1])) { idx = k; break; }
+    }
+    const token = expr.slice(idx + 1);
+    if (token === "" || token === "−") return;
+    const val = toNum(token);
+    if (idx > 0 && (expr[idx] === "+" || expr[idx] === "−")) {
+      // e.g. 200+10% -> 10% of 200 = 20, expression becomes 200+20
+      const base = evaluate(expr.slice(0, idx));
+      if (base === null || isNaN(base)) return;
+      expr = expr.slice(0, idx + 1) + ins(base * val / 100);
+    } else {
+      expr = (idx >= 0 ? expr.slice(0, idx + 1) : "") + ins(val / 100);
+    }
+    updateDisplay();
+  }
+
+  function pressBackspace() {
+    if (errorState) { clearAll(); return; }
+    if (showingResult) { expr = lastResult; showingResult = false; }
+    expr = expr.slice(0, -1);
+    updateDisplay();
+  }
+
+  /* Apply a function to the trailing number token (or the result after =) */
+  function applyToToken(fn, label) {
+    if (errorState) return;
+    if (showingResult) {
+      const v = toNum(lastResult);
+      const r = fn(v);
+      if (r === null || isNaN(r)) { showError(); return; }
+      expr = ins(r);
+      showingResult = false;
+      updateDisplay();
+      return;
+    }
+    let idx = -1;
+    for (let k = expr.length - 1; k > 0; k--) {
+      if (isOp(expr[k]) && !isOp(expr[k - 1])) { idx = k; break; }
+    }
+    const token = expr.slice(idx + 1);
+    if (token === "" || token === "−") return;
+    const v = toNum(token);
+    const r = fn(v);
+    if (r === null || isNaN(r)) { showError(); return; }
+    expr = (idx >= 0 ? expr.slice(0, idx + 1) : "") + ins(r);
+    updateDisplay();
+  }
+
+  function pressSqrt() { applyToToken((v) => (v < 0 ? NaN : Math.sqrt(v))); }
+  function pressSquare() { applyToToken((v) => v * v); }
+  function pressReciprocal() { applyToToken((v) => (v === 0 ? NaN : 1 / v)); }
+
+  function pressNegate() {
+    if (errorState) return;
+    if (showingResult) {
+      expr = ins(-toNum(lastResult));
+      showingResult = false;
+      updateDisplay();
+      return;
+    }
+    let idx = -1;
+    for (let k = expr.length - 1; k > 0; k--) {
+      if (isOp(expr[k]) && !isOp(expr[k - 1])) { idx = k; break; }
+    }
+    const token = expr.slice(idx + 1);
+    if (token === "") {
+      if (idx >= 0) expr += "−"; // start a negative next number
+    } else if (token.startsWith("−")) {
+      expr = (idx >= 0 ? expr.slice(0, idx + 1) : "") + token.slice(1);
+    } else {
+      expr = (idx >= 0 ? expr.slice(0, idx + 1) : "") + "−" + token;
+    }
+    updateDisplay();
+  }
+
+  /* ================= BUTTON WIRING ================= */
+  document.querySelectorAll("[data-digit]").forEach(btn =>
+    btn.addEventListener("click", () => pressDigit(btn.dataset.digit)));
+  document.querySelectorAll("[data-op]").forEach(btn =>
+    btn.addEventListener("click", () => pressOperator(btn.dataset.op)));
+  document.querySelectorAll("[data-fn]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const fn = btn.dataset.fn;
+      if (fn === "clear") clearAll();
+      else if (fn === "backspace") pressBackspace();
+      else if (fn === "percent") pressPercent();
+      else if (fn === "dot") pressDot();
+      else if (fn === "equals") pressEquals();
+      else if (fn === "sqrt") pressSqrt();
+      else if (fn === "square") pressSquare();
+      else if (fn === "negate") pressNegate();
+      else if (fn === "reciprocal") pressReciprocal();
+    });
+  });
+
+  /* Keyboard support (ignored while typing in converter fields) */
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (/^[0-9]$/.test(e.key)) pressDigit(e.key);
+    else if (e.key === "." || e.key === ",") pressDot();
+    else if (e.key === "+") pressOperator("+");
+    else if (e.key === "-") pressOperator("−");
+    else if (e.key === "*") pressOperator("×");
+    else if (e.key === "/") { e.preventDefault(); pressOperator("÷"); }
+    else if (e.key === "%") pressPercent();
+    else if (e.key === "Enter" || e.key === "=") { e.preventDefault(); pressEquals(); }
+    else if (e.key === "Backspace") pressBackspace();
+    else if (e.key === "Escape") clearAll();
+  });
+
+  /* ================= HISTORY ================= */
+  const historyPanel = document.getElementById("historyPanel");
+  const historyList = document.getElementById("historyList");
+  function renderHistory() {
+    if (history.length === 0) {
+      historyList.innerHTML = '<div class="history-empty">No history yet</div>';
+      return;
+    }
+    historyList.innerHTML = "";
+    history.forEach(line => {
+      const b = document.createElement("button");
+      b.className = "history-item";
+      b.textContent = line;
+      b.addEventListener("click", () => {
+        const res = line.split("=")[1];
+        if (res !== undefined) {
+          clearAll();
+          expr = res;
+          updateDisplay();
+        }
+        historyPanel.classList.remove("open");
+      });
+      historyList.appendChild(b);
+    });
+  }
+  renderHistory();
+  document.getElementById("btnHistory").addEventListener("click", () => {
+    showMode("calc");
+    historyPanel.classList.toggle("open");
+  });
+  document.getElementById("btnClearHistory").addEventListener("click", () => {
+    history = []; renderHistory();
+  });
+
+  /* Expand button toggles the scientific row */
+  document.getElementById("btnExpand").addEventListener("click", () => {
+    document.getElementById("sciRow").classList.toggle("open");
+  });
+
+  /* ================= MODES (Calculator / Currency / Length) ================= */
+  const displayEl = document.getElementById("display");
+  const mainGrid = document.getElementById("mainGrid");
+  const sciRow = document.getElementById("sciRow");
+  const currencyView = document.getElementById("currencyView");
+  const lengthView = document.getElementById("lengthView");
+  const btnCurrency = document.getElementById("btnCurrency");
+  const btnLength = document.getElementById("btnLength");
+
+  function showMode(mode) {
+    const calc = mode === "calc";
+    displayEl.style.display = calc ? "flex" : "none";
+    mainGrid.style.display = calc ? "grid" : "none";
+    sciRow.style.display = (calc && sciRow.classList.contains("open")) ? "grid" : "none";
+    currencyView.classList.toggle("open", mode === "currency");
+    lengthView.classList.toggle("open", mode === "length");
+    btnCurrency.classList.toggle("active", mode === "currency");
+    btnLength.classList.toggle("active", mode === "length");
+    historyPanel.classList.remove("open");
+  }
+  btnCurrency.addEventListener("click", () => {
+    showMode(currencyView.classList.contains("open") ? "calc" : "currency");
+    convertCurrency();
+  });
+  btnLength.addEventListener("click", () => {
+    showMode(lengthView.classList.contains("open") ? "calc" : "length");
+    convertLength();
+  });
+
+  /* ================= CURRENCY CONVERTER (approx rates, per 1 USD) ================= */
+  const rates = { USD: 1, PKR: 280, EUR: 0.92, GBP: 0.79, AED: 3.67, SAR: 3.75, INR: 88, CAD: 1.36 };
+  function convertCurrency() {
+    const amt = parseFloat(document.getElementById("curAmount").value);
+    const from = document.getElementById("curFrom").value;
+    const to = document.getElementById("curTo").value;
+    const out = document.getElementById("curResult");
+    if (isNaN(amt)) { out.textContent = ""; return; }
+    const res = amt / rates[from] * rates[to];
+    out.textContent = parseFloat(res.toFixed(2)).toLocaleString("en-US") + " " + to;
+  }
+  ["curAmount", "curFrom", "curTo"].forEach(id =>
+    document.getElementById(id).addEventListener("input", convertCurrency));
+  document.getElementById("curSwap").addEventListener("click", () => {
+    const f = document.getElementById("curFrom"), t = document.getElementById("curTo");
+    const tmp = f.value; f.value = t.value; t.value = tmp;
+    convertCurrency();
+  });
+
+  /* ================= LENGTH CONVERTER (exact factors, in meters) ================= */
+  const toMeter = { mm: 0.001, cm: 0.01, m: 1, km: 1000, in: 0.0254, ft: 0.3048, yd: 0.9144, mi: 1609.344 };
+  function convertLength() {
+    const val = parseFloat(document.getElementById("lenValue").value);
+    const from = document.getElementById("lenFrom").value;
+    const to = document.getElementById("lenTo").value;
+    const out = document.getElementById("lenResult");
+    if (isNaN(val)) { out.textContent = ""; return; }
+    const res = val * toMeter[from] / toMeter[to];
+    out.textContent = parseFloat(res.toFixed(6)).toLocaleString("en-US") + " " + to;
+  }
+  ["lenValue", "lenFrom", "lenTo"].forEach(id =>
+    document.getElementById(id).addEventListener("input", convertLength));
+  document.getElementById("lenSwap").addEventListener("click", () => {
+    const f = document.getElementById("lenFrom"), t = document.getElementById("lenTo");
+    const tmp = f.value; f.value = t.value; t.value = tmp;
+    convertLength();
+  });
+
+  updateDisplay();
+</script>
+</body>
+</html>
